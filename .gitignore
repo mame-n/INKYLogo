@@ -1,0 +1,9 @@
+.DS_Store
+*.pyc
+__pycache__/
+
+makecode_project/node_modules/
+makecode_project/pxt_modules/
+makecode_project/built/
+
+.makecode-test/

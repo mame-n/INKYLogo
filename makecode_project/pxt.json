@@ -1,0 +1,19 @@
+{
+    "name": "nasunozaki-inky-logo",
+    "description": "Nasunozaki lighthouse logo for micro:bit and Pimoroni Inky:bit",
+    "dependencies": {
+        "core": "*",
+        "inkybit": "github:pimoroni/pxt-inkybit#v0.0.5"
+    },
+    "files": [
+        "main.ts"
+    ],
+    "targetVersions": {
+        "target": "7.0.13",
+        "targetId": "microbit"
+    },
+    "supportedTargets": [
+        "microbit"
+    ],
+    "preferredEditor": "tsprj"
+}

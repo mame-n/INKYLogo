@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+"""Convert the lighthouse PNG into a 3-colour Inky:bit RLE program."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+
+
+WIDTH = 250
+HEIGHT = 122
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+
+DEFAULT_INPUT = Path(
+    "/Users/nakauchishouichi/Library/Mobile Documents/com~apple~CloudDocs/"
+    "那須野崎プログラミング倶楽部/Logo/"
+    "494267D0-2390-4BDB-903F-D782C6A5ABAC-E.png"
+)
+DEFAULT_FONT = Path("/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc")
+FALLBACK_FONTS = (
+    Path("/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"),
+    Path("/System/Library/Fonts/Hiragino Sans GB.ttc"),
+    Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),
+)
+
+
+def find_font(requested: Path | None) -> Path:
+    candidates = ((requested,) if requested else ()) + FALLBACK_FONTS
+    for candidate in candidates:
+        if candidate and candidate.exists():
+            return candidate
+    raise FileNotFoundError("Japanese font not found; pass --font /path/to/font")
+
+
+def alpha_bbox(image: Image.Image) -> tuple[int, int, int, int]:
+    alpha = image.getchannel("A")
+    bbox = alpha.getbbox()
+    if bbox is None:
+        raise ValueError("Input image is fully transparent")
+    return bbox
+
+
+def make_logo(source: Image.Image, size: int, threshold: int) -> Image.Image:
+    cropped = source.crop(alpha_bbox(source))
+    cropped.thumbnail((size, size), Image.Resampling.LANCZOS)
+
+    flattened = Image.new("RGB", cropped.size, WHITE)
+    flattened.paste(cropped.convert("RGB"), mask=cropped.getchannel("A"))
+
+    gray = flattened.convert("L")
+    alpha = cropped.getchannel("A")
+    result = Image.new("RGB", cropped.size, WHITE)
+    pixels = result.load()
+    gray_pixels = gray.load()
+    alpha_pixels = alpha.load()
+
+    for y in range(cropped.height):
+        for x in range(cropped.width):
+            if alpha_pixels[x, y] >= 32 and gray_pixels[x, y] < threshold:
+                pixels[x, y] = BLACK
+    return result
+
+
+def centered_text_x(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    left: int,
+    right: int,
+) -> int:
+    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=0)
+    text_width = bbox[2] - bbox[0]
+    return left + (right - left - text_width) // 2 - bbox[0]
+
+
+def compose(
+    input_path: Path,
+    font_path: Path,
+    logo_size: int,
+    threshold: int,
+) -> Image.Image:
+    source = Image.open(input_path).convert("RGBA")
+    canvas = Image.new("RGB", (WIDTH, HEIGHT), WHITE)
+
+    logo = make_logo(source, logo_size, threshold)
+    logo_x = 4 + (108 - logo.width) // 2
+    logo_y = (HEIGHT - logo.height) // 2
+    canvas.paste(logo, (logo_x, logo_y))
+
+    draw = ImageDraw.Draw(canvas)
+    title_font = ImageFont.truetype(str(font_path), 29)
+    subtitle_font = ImageFont.truetype(str(font_path), 28)
+    text_left = 112
+    text_right = WIDTH - 2
+
+    title = "那須野崎"
+    subtitle = "プロクラ"
+    draw.text(
+        (centered_text_x(draw, title, title_font, text_left, text_right), 22),
+        title,
+        font=title_font,
+        fill=RED,
+    )
+    draw.text(
+        (
+            centered_text_x(
+                draw, subtitle, subtitle_font, text_left, text_right
+            ),
+            68,
+        ),
+        subtitle,
+        font=subtitle_font,
+        fill=BLACK,
+    )
+
+    # Force every antialiased pixel to an exact Inky:bit primary colour.
+    pixels = canvas.load()
+    for y in range(HEIGHT):
+        for x in range(WIDTH):
+            r, g, b = pixels[x, y]
+            if r > 210 and g > 210 and b > 210:
+                pixels[x, y] = WHITE
+            elif r > g * 1.35 and r > b * 1.35:
+                pixels[x, y] = RED
+            else:
+                pixels[x, y] = BLACK
+
+    return canvas
+
+
+def colour_code(pixel: tuple[int, int, int]) -> int:
+    if pixel == WHITE:
+        return 0
+    if pixel == BLACK:
+        return 1
+    if pixel == RED:
+        return 2
+    raise ValueError(f"Non-palette pixel: {pixel}")
+
+
+def rle_encode(image: Image.Image) -> list[int]:
+    values = [colour_code(pixel) for pixel in image.getdata()]
+    encoded: list[int] = []
+    current = values[0]
+    count = 0
+
+    for value in values:
+        if value == current and count < 255:
+            count += 1
+            continue
+        encoded.extend((count, current))
+        current = value
+        count = 1
+    encoded.extend((count, current))
+    return encoded
+
+
+def format_rle(encoded: list[int], values_per_line: int = 24) -> str:
+    lines = []
+    for index in range(0, len(encoded), values_per_line):
+        chunk = ", ".join(str(value) for value in encoded[index:index + values_per_line])
+        lines.append("    " + chunk + ",")
+    return "\n".join(lines)
+
+
+def makecode_source(encoded: list[int]) -> str:
+    return f'''# Generated by convert_logo.py.
+# MakeCode extension: github:pimoroni/pxt-inkybit#v0.0.5
+# Palette: 0=white, 1=black, 2=red/accent.
+
+WIDTH = {WIDTH}
+HEIGHT = {HEIGHT}
+
+LOGO_RLE = [
+{format_rle(encoded)}
+]
+
+
+def draw_rle():
+    position = 0
+    index = 0
+    while index < len(LOGO_RLE):
+        count = LOGO_RLE[index]
+        colour = LOGO_RLE[index + 1]
+
+        if colour != 0:
+            if colour == 1:
+                ink = inkybit.Color.BLACK
+            else:
+                ink = inkybit.Color.ACCENT
+
+            offset = 0
+            while offset < count:
+                pixel = position + offset
+                inkybit.set_pixel(pixel % WIDTH, pixel // WIDTH, ink)
+                offset += 1
+
+        position += count
+        index += 2
+
+
+inkybit.clear()
+draw_rle()
+inkybit.show()
+'''
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input", nargs="?", type=Path, default=DEFAULT_INPUT)
+    parser.add_argument("--font", type=Path)
+    parser.add_argument("--output", type=Path, default=Path("makecode_inky_logo.py"))
+    parser.add_argument("--preview", type=Path, default=Path("inky_logo_preview.png"))
+    parser.add_argument("--logo-size", type=int, default=108)
+    parser.add_argument("--threshold", type=int, default=170)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    font_path = find_font(args.font)
+    image = compose(args.input, font_path, args.logo_size, args.threshold)
+    encoded = rle_encode(image)
+
+    args.preview.parent.mkdir(parents=True, exist_ok=True)
+    image.save(args.preview)
+    args.output.write_text(makecode_source(encoded), encoding="utf-8")
+
+    raw_size = WIDTH * HEIGHT
+    print(f"preview: {args.preview}")
+    print(f"MakeCode: {args.output}")
+    print(f"RLE pairs: {len(encoded) // 2}")
+    print(f"RLE values: {len(encoded)} ({len(encoded) / raw_size:.1%} of raw pixels)")
+
+
+if __name__ == "__main__":
+    main()
