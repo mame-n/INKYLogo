@@ -7,3 +7,7 @@ makecode_project/pxt_modules/
 makecode_project/built/
 
 .makecode-test/
+
+# Keep intermediate firmware builds local. Only the final build is published.
+*.hex
+!nasunozaki_inky_lighthouse_kanji_prokura_microbit_v2.hex
