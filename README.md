@@ -1,5 +1,53 @@
 # micro:bit + Inky:bit display test
 
+## 使い方
+
+### 必要なもの
+
+- micro:bit V2
+- Pimoroni Inky:bit
+- macOS、Python 3、Node.js
+- A、B、A+Bに割り当てるPNG画像3枚
+- 初回コンパイル時のみインターネット接続
+
+### HEXを作成する
+
+1. micro:bitをUSBでMacへ接続します。
+2. ターミナルでこのプロジェクトのフォルダへ移動します。
+3. 次のコマンドを実行します。
+
+```sh
+python3 make_multi_image_rle.py --choose
+```
+
+4. 表示されるファイル選択画面で、A、B、A+B用のPNGを順番に選びます。
+5. 画像変換とコンパイルが終わるまで待ちます。
+6. Finderに表示された`inky_images_microbit_v2.hex`を`MICROBIT`ドライブへドラッグします。
+
+生成したHEXは`dist/inky_images_microbit_v2.hex`にも保存されます。micro:bitが接続済みなら、FinderでHEXと`MICROBIT`ドライブが自動的に開きます。
+
+PNGの大きさは自由です。縦横比を保ったままInky:bitの250x122ピクセル内へ収め、余白を白で補います。
+
+### micro:bitの操作
+
+- リセットまたは電源投入：灯台＋`那須野崎`＋`プロクラ`のホーム画像
+- Aボタン：選択した画像1
+- Bボタン：選択した画像2
+- A+Bボタン：選択した画像3
+- ロゴをタッチ：ホーム画像へ戻る
+
+電子ペーパーの更新には数秒かかります。更新中のボタン入力は無視されます。
+
+### オプション
+
+ファイル選択画面を使わず、画像を直接指定することもできます。
+
+```sh
+python3 make_multi_image_rle.py image-a.png image-b.png image-ab.png
+```
+
+TypeScriptだけを生成し、HEXをコンパイルしない場合は`--no-build`を追加します。Finderを開かない場合は`--no-finder`を追加します。
+
 ## Recommended
 
 Copy `nasunozaki_inky_lighthouse_kanji_prokura_microbit_v2.hex` to the
